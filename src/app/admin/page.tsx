@@ -7,7 +7,7 @@ import Header from '../_components/Header';
 import Footer from '../_components/Footer';
 // Import the NEWLY DEFINED types for LocationClean and WorkoutClean
 import type { LocationClean, WorkoutClean } from '../../../types/workout'; // Adjust path if needed
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react'; // Added Suspense
 
 // For icons
 import { TrashIcon, PlusCircleIcon, PencilIcon } from '@heroicons/react/24/solid'; // Requires @heroicons/react installed: npm install @heroicons/react
@@ -28,7 +28,8 @@ interface WorkoutsByLocation {
   [locationId: string]: WorkoutClean[];
 }
 
-export default function AdminPage() {
+// This is the new component that will use useSearchParams
+function AdminDashboard() {
   const searchParams = useSearchParams();
   const providedPassword = searchParams.get('pw');
 
@@ -120,10 +121,25 @@ export default function AdminPage() {
   }, [providedPassword]); // Added providedPassword to refreshAllData dependencies
 
   useEffect(() => {
+    if (providedPassword === undefined) { // Still waiting for Suspense to resolve searchParams
+        return;
+    }
     if (providedPassword && providedPassword === CLIENT_ADMIN_PASSWORD) {
       refreshAllData();
+    } else if (providedPassword === null && CLIENT_ADMIN_PASSWORD) { // No pw provided, but one is set
+      setMessage('Access Denied: Password required.');
     } else if (providedPassword && providedPassword !== CLIENT_ADMIN_PASSWORD) {
       setMessage('Access Denied: Invalid password in URL.');
+    } else if (!CLIENT_ADMIN_PASSWORD && providedPassword) {
+        // This case might mean admin password is not set in .env but user provided one.
+        // Depending on desired behavior, you might allow access or deny.
+        // For now, let's assume if NEXT_PUBLIC_ADMIN_PASSWORD is not set, access is restricted.
+        setMessage('Access Denied: Admin password not configured on server.');
+    } else if (!CLIENT_ADMIN_PASSWORD && !providedPassword) {
+        // No password set, no password provided - potentially allow access or show setup message
+        // For now, assume access if no password is set up.
+        // console.log("AdminPage: No admin password set. Allowing access.");
+        refreshAllData(); // Or, you might want to restrict this.
     }
   }, [providedPassword, CLIENT_ADMIN_PASSWORD, refreshAllData]);
 
@@ -377,29 +393,44 @@ export default function AdminPage() {
     }
   };
 
+   // Handle cases where searchParams might not be immediately available
+  if (providedPassword === undefined && CLIENT_ADMIN_PASSWORD) { // Check if password is required but not yet available
+    return (
+        <main className="container mx-auto px-4 py-8 text-center">
+            <p>Loading admin interface...</p>
+        </main>
+    );
+  }
+
+
   // --- Access Denied / Main Render ---
-  if (providedPassword !== CLIENT_ADMIN_PASSWORD) {
+  // Logic for CLIENT_ADMIN_PASSWORD being undefined (not set)
+  const isPasswordProtected = !!CLIENT_ADMIN_PASSWORD;
+  const canAccess = isPasswordProtected ? providedPassword === CLIENT_ADMIN_PASSWORD : true;
+
+
+  if (!canAccess) {
     return (
       <>
-        <Header href="/admin" />
+        {/* Header is outside AdminDashboard, so it will render without Suspense issues */}
         <main className="container mx-auto px-4 py-8 text-center">
           <h1 className="text-2xl font-bold text-red-600">Access Denied</h1>
           <p className="mt-4">
-            You have not provided the correct password to access this page.
-            {message && <span className="block text-sm text-red-500 mt-2">{message}</span>}
+            {message || (CLIENT_ADMIN_PASSWORD ? "You have not provided the correct password or it's missing." : "Admin access is currently not password protected, but an issue occurred.")}
           </p>
           <Link href="/" className="mt-6 inline-block bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600">
             Go to Homepage
           </Link>
         </main>
-        <Footer />
+        {/* Footer is outside AdminDashboard */}
       </>
     );
   }
 
+  // Actual dashboard content if access is granted
   return (
     <>
-      <Header href="/admin" />
+      {/* Header and Footer are rendered by the AdminPage parent component */}
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">
           Admin Dashboard
@@ -707,6 +738,19 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+      {/* Footer is rendered by the AdminPage parent component */}
+    </>
+  );
+}
+
+// This is the main page component, now wrapping AdminDashboard in Suspense
+export default function AdminPage() {
+  return (
+    <>
+      <Header href="/admin" />
+      <Suspense fallback={<div className="container mx-auto px-4 py-8 text-center">Loading admin controls...</div>}>
+        <AdminDashboard />
+      </Suspense>
       <Footer />
     </>
   );

@@ -20,6 +20,10 @@ import type { WorkoutClean, LocationClean } from '../../../types/workout';
 import { convertWorkoutsToCardProps } from '../../utils/convertWorkouts';
 import type { WorkoutCardProps } from '../_components/WorkoutCard'; // Import WorkoutCardProps for grouping
 
+// Import the GET function from the API route
+import { GET as fetchLocationsAPI } from '../api/locations/route';
+import { NextRequest } from 'next/server';
+
 
 // Define a type for the grouped workouts for display on this page
 interface GroupedWorkoutsByLocation {
@@ -31,26 +35,32 @@ export default async function Page() {
   // 1. Fetch raw data for workouts. This returns WorkoutClean[].
   const rawWorkouts: WorkoutClean[] = await fetchWorkoutsData();
 
-  // 2. Fetch locations data.
+  // 2. Fetch locations data by directly calling the API route's GET function.
   let rawLocations: LocationClean[] = [];
   try {
-    // Since /api/locations GET method is now public, remove the password parameter from the request.
-    const locationsResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/locations`);
+    // We need to mock a NextRequest object if the API handler expects it.
+    // For a simple GET without searchParams or specific headers, an empty object might suffice,
+    // or a more complete mock if needed. The `GET` function for locations doesn't seem to use `request` param.
+    const mockRequest = {} as NextRequest; // Adjust if GET uses request details
+    const locationsResponse = await fetchLocationsAPI(mockRequest);
+
     if (!locationsResponse.ok) {
-      console.error('Workouts Page: Failed to fetch locations:', locationsResponse.status, locationsResponse.statusText);
+      console.error('Workouts Page: Failed to fetch locations directly:', locationsResponse.status, await locationsResponse.text());
       rawLocations = []; // Fallback to an empty array
     } else {
-      rawLocations = await locationsResponse.json();
-      if (!Array.isArray(rawLocations)) {
-        console.error('Workouts Page: Fetched locations data is not an array! Received:', rawLocations);
+      const locationsData = await locationsResponse.json();
+      if (!Array.isArray(locationsData)) {
+        console.error('Workouts Page: Fetched locations data is not an array! Received:', locationsData);
         rawLocations = [];
+      } else {
+        rawLocations = locationsData;
       }
     }
     // --- DEBUGGING LOG ---
     console.log('Workouts Page: Fetched Raw Locations:', rawLocations);
     // --- END DEBUGGING LOG ---
   } catch (error) {
-    console.error('Workouts Page: Error fetching locations:', error);
+    console.error('Workouts Page: Error fetching locations directly:', error);
     rawLocations = [];
   }
 
